@@ -1,0 +1,169 @@
+---
+title: "Machine Learning"
+author: "JP Kuijper"
+date: "November 23, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+# Practical Machine Learning Human Activity Recognition
+## by JP Kuijper
+
+### Assignment
+
+Create a machine learning algorithm with the R caret package that predicts the
+activity (classe) based on various variables (159 maximum).
+
+### Preparation
+
+Loading the data, libraries and prepare the data for exploration and analysis.
+
+```{r,cache = TRUE, message = FALSE, results = "hide"}
+## loading libraries
+library(caret); library(dplyr)
+
+# read in data
+urltrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+dataset <- read.csv(url(urltrain))
+
+## correct column names
+convert <- colnames(dataset[,8:159])
+dataset[,convert] <- 
+    lapply(dataset[,convert,drop=FALSE],as.numeric)
+
+```
+
+After this we will first create the testing and training datasets. 
+
+```{r,cache = TRUE}
+## create training/test/validation sets
+set.seed(777)
+inBuild <- createDataPartition(y = dataset$classe, p = .7, list = FALSE)
+testing <- dataset[-inBuild,]; training <- dataset[inBuild,]
+```
+
+Exploration is done next, results are not included due to the enormous amount of
+output.
+
+```{r,cache = TRUE, message = FALSE, results = "hide"}
+str(training)
+dim(training)
+head(training)
+```
+
+We can conclude that there are two major issues, the first is the time and 
+identification variables that will pollute the analysis when included. The second
+issue is there are variables with many NA's. It has been decided to include the
+variables who have less that 20% NA's. 
+
+```{r, cache = TRUE}
+### removing time/identification variables
+testing1 <- testing[,8:160]
+training1 <- training[,8:160]
+
+### Remove variables with too many NA's
+training2 <- training1[ , colSums(is.na(training1)) < (nrow(training1)/100*20)]
+testing2 <- testing1[ , colSums(is.na(training1)) < (nrow(testing1)/100*20)]
+```
+
+Last but not least we will filter out the variables that have too little variation.
+
+```{r, cache = TRUE}
+### removing zerovar variables
+nsv <- nearZeroVar(training2, saveMetrics = TRUE)
+nsv1 <- subset(nsv, nzv == "FALSE")
+nsvcol <- rownames(nsv1)
+training3 <- training2[,nsvcol]
+testing3 <- testing2[,nsvcol]
+```
+
+### Analysis
+
+Now we can start with the analysis, we will try different algorithms and see what
+is the best combination in the end. 
+
+```{r, cache = TRUE}
+### control procedure
+control <- trainControl(method="cv", number=10)
+metric <- "Accuracy"
+
+### algorithms
+# LDA
+set.seed(7)
+fit.lda <- train(classe~., data=training3, method="lda", metric=metric, trControl=control,
+na.action = na.omit)
+# CART
+set.seed(7)
+fit.cart <- train(classe~., data=training3, method="rpart", metric=metric,
+trControl=control, na.action = na.omit)
+# kNN
+set.seed(7)
+fit.knn <- train(classe~., data=training3, method="knn", metric=metric, trControl=control,
+na.action = na.omit)
+# SVM
+set.seed(7)
+fit.svm <- train(classe~., data=training3, method="svmRadial", metric=metric,
+trControl=control, na.action = na.omit)
+# Random Forest
+set.seed(7)
+fit.rf <- train(classe~., data=training3, method="rf", metric=metric, trControl=control,
+na.action = na.omit)
+```
+
+We can see that Random Forest, Support Vector, and K nearest neighbours have the 
+highest correct predictability. However, when combining the three and comparing
+this with Random Forest alone, shows the same accuracy. Therefore due to 
+compiling time, Random Forest alone is taken in the end. 
+See appendix for more information.
+
+```{r, cache = TRUE}
+### summarize accuracy of models
+results <- resamples(list(lda=fit.lda, cart=fit.cart, knn=fit.knn, svm=fit.svm, rf=fit.rf))
+summary(results)
+
+### use only RF
+predrf <- predict(fit.rf, newdata = testing3)
+confusionMatrix(predrf, testing3$classe)
+```
+
+### Prediction
+
+Now we will load the validation set, which has been kept separate untill now.
+It will be prepared in the same way as the training and testing datasets.
+
+```{r, cache = TRUE}
+######### validation test load 
+urltestult <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+validation <- read.csv(url(urltestult))
+
+### Change dataset to match training/testing sets
+colnames(validation)[160] <- "classe"
+validation1 <- validation[,8:160]
+validation2 <- validation1[ ,colSums(is.na(training1)) < (nrow(validation1)/100*20)]
+validation3 <- validation2[,nsvcol]
+### remove identity variable (named classe above for preparation comparability)
+validation4 <- validation3[,1:52]
+```
+
+```{r, cache = TRUE}
+### Use RF to predict cases
+pred3V <- predict(fit.rf, newdata = validation4)
+print(pred3V)
+```
+
+
+## Appendix
+
+```{r, cache = TRUE}
+#### Choosing RF svm knn 
+predknn <- predict(fit.knn, newdata = testing3)
+predsvm <- predict(fit.svm, newdata = testing3)
+predrf <- predict(fit.rf, newdata = testing3)
+predDf <- data.frame(predknn, predsvm, predrf, classe = testing3$classe)
+
+### RF alone is just as good as taken together
+fit3 <- train(classe ~., predDf, method = "rf")
+pred3 <- predict(fit3, predDf)
+confusionMatrix(pred3, testing3$classe)
+confusionMatrix(predrf, testing3$classe)
+```
