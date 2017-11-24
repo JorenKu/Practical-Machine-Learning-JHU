@@ -3,8 +3,8 @@ title: "Machine Learning"
 author: "JP Kuijper"
 date: "November 23, 2017"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 # Practical Machine Learning Human Activity Recognition
 ## by JP Kuijper
@@ -124,6 +124,15 @@ summary(results)
 ### use only RF
 predrf <- predict(fit.rf, newdata = testing3)
 confusionMatrix(predrf, testing3$classe)
+```
+
+### Out of sample error
+
+Here the out of sample error is calculated.
+
+```{r, cache = TRUE}
+Conf <- confusionMatrix(predrf, testing3$classe)
+sum(diag(Conf$table))/sum(Conf$table)
 ```
 
 ### Prediction
